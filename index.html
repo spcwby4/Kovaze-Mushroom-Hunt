@@ -1,35 +1,447 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-    <title>🍄 Kovaze Mushroom Hunt Live</title>
-    <meta charset="utf-8">
-    <style>
-        body {font-family: Arial; background: #000; color: lime; padding: 40px; text-align: center;}
-        h1 {font-size: 3em; margin: 20px;}
-        .links {margin: 50px; font-size: 1.8em; line-height: 2;}
-        a {color: lime; display: block; margin: 20px; text-decoration: underline;}
-        .count {color: yellow; font-size: 2em; font-weight: bold;}
-    </style>
-    <script>
-        setInterval(() => location.reload(), 20000);
-        fetch('links.txt?' + Date.now())
-            .then(r => r.text())
-            .then(text => {
-                if (text.trim()) {
-                    const links = text.trim().split('\n');
-                    document.getElementById('count').innerText = 'MUSHROOMS FOUND: ' + links.length;
-                    document.getElementById('links').innerHTML = links
-                        .map(l => `<a href="${l}" target="_blank">🍄 ${l}</a>`).join('');
-                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.mp3').play();
-                }
-            });
-    </script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>KOVAZE MUSHROOM HUNT — Better Scanner</title>
+<style>
+  :root { --bg:#0b1020; --card:#121a34; --ink:#e9eefc; --muted:#a9b6e8; --accent:#7df57d; --warn:#ffd166; --danger:#ff6b6b; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji"; background: var(--bg); color: var(--ink); }
+  header { padding:20px; text-align:center; }
+  h1 { margin:0 0 6px; font-size: clamp(20px, 3.8vw, 34px); letter-spacing: .5px; }
+  header p { margin:0; color: var(--muted); }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 12px 16px 28px; display: grid; gap: 16px; }
+  .card { background: var(--card); border: 1px solid rgba(255,255,255,.05); border-radius: 12px; padding: 16px; }
+  .row { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+  .col-12 { grid-column: span 12; }
+  .col-6 { grid-column: span 6; }
+  .col-4 { grid-column: span 4; }
+  .col-3 { grid-column: span 3; }
+  .col-2 { grid-column: span 2; }
+  label { display:block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  input, select { width: 100%; background: #0e1732; color: var(--ink); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+  input[type="checkbox"] { width:auto; }
+  button { appearance: none; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 600; cursor: pointer; }
+  .btn { background: #2b3a7a; color: #fff; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn-accent { background: #1f7a3b; }
+  .btn-warn { background: #7a5a1f; }
+  .btn-danger { background: #7a2b2b; }
+  .badge { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #1b244a; color: var(--muted); margin-left:6px; }
+  .stat { display: inline-flex; align-items: center; gap:6px; padding:6px 10px; background:#0e1732; border:1px solid rgba(255,255,255,.06); border-radius:8px; font-size:13px; color:var(--muted); }
+  .stat strong { color: var(--ink); }
+  .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .logs { max-height: 320px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#0a1228; border:1px solid rgba(255,255,255,.06); border-radius:8px; padding:10px; }
+  .hits { max-height: 380px; overflow: auto; }
+  .hit { padding: 8px 10px; border:1px solid rgba(125,245,125,.3); background: rgba(125,245,125,.08); border-radius:8px; margin-bottom:8px; }
+  .muted { color: var(--muted); }
+  a { color: #8cd0ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  footer { text-align:center; color: var(--muted); padding: 18px; font-size: 13px; }
+  @media (max-width: 900px) { .col-6,.col-4,.col-3,.col-2 { grid-column: span 12; } }
+</style>
 </head>
 <body>
-    <h1>🍄 KOVAZE MUSHROOM HUNT 2025</h1>
-    <p class="count" id="count">Loading...</p>
-    <div id="links" class="links">Scanning 25,000 blogs...</div>
-    <p>Auto-refreshes every 20s • Sound on new finds</p>
-    <p>Made by spcwby4</p>
+  <header>
+    <h1>KOVAZE MUSHROOM HUNT — Better Scanner</h1>
+    <p>Scans blog pages and flags ones that contain a clickable mushroom. HTML is read via a safe read-only proxy to bypass CORS.</p>
+  </header>
+
+  <div class="wrap">
+    <section class="card">
+      <div class="row">
+        <div class="col-3">
+          <label>Start ID</label>
+          <input id="startId" type="number" min="1" value="1" />
+        </div>
+        <div class="col-3">
+          <label>End ID</label>
+          <input id="endId" type="number" min="1" value="25000" />
+        </div>
+        <div class="col-2">
+          <label>Concurrency</label>
+          <input id="concurrency" type="number" min="1" max="128" value="16" />
+        </div>
+        <div class="col-2">
+          <label>Batch delay (ms)</label>
+          <input id="delayMs" type="number" min="0" value="150" />
+        </div>
+        <div class="col-2">
+          <label>Timeout per fetch (ms)</label>
+          <input id="timeoutMs" type="number" min="100" value="12000" />
+        </div>
+
+        <div class="col-6">
+          <label>Match rule (regex, case-insensitive)</label>
+          <input id="regex" type="text" value="mushroom|🍄" />
+        </div>
+        <div class="col-6">
+          <label>Must also contain (optional, comma-separated)</label>
+          <input id="mustAlso" type="text" placeholder="e.g. clickable,href" />
+        </div>
+
+        <div class="col-12">
+          <div class="flex">
+            <button id="btnStart" class="btn btn-accent">Start Scan</button>
+            <button id="btnStop" class="btn btn-danger" disabled>Stop</button>
+            <button id="btnClear" class="btn">Clear Logs</button>
+            <button id="btnExport" class="btn">Export Hits (.csv)</button>
+            <label class="stat">Auto-rerun
+              <input id="autoRerun" type="checkbox" />
+              <span class="muted">every</span>
+              <input id="rerunMinutes" type="number" min="1" value="1" style="width:80px" />
+              <span class="muted">min</span>
+            </label>
+            <label class="stat">
+              <input id="soundOn" type="checkbox" checked /> Sound on hit
+            </label>
+            <span class="stat">Progress: <strong id="prog">0%</strong></span>
+            <span class="stat">Checked: <strong id="checked">0</strong></span>
+            <span class="stat">Hits: <strong id="hits">0</strong></span>
+            <span class="stat">Throughput: <strong id="tps">0</strong>/s</span>
+            <span class="stat">Elapsed: <strong id="elapsed">00:00</strong></span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin:0 0 8px;">Found Mushrooms</h3>
+      <div id="hitList" class="hits"></div>
+    </section>
+
+    <section class="card">
+      <h3 style="margin:0 0 8px;">Logs</h3>
+      <div id="logs" class="logs" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <footer>
+    <span>Made for the hunt. Uses r.jina.ai to fetch public HTML safely from the browser.</span>
+  </footer>
+
+<script>
+(() => {
+  // --- Elements
+  const $ = (id) => document.getElementById(id);
+  const startIdEl = $('startId');
+  const endIdEl = $('endId');
+  const concEl = $('concurrency');
+  const delayEl = $('delayMs');
+  const timeoutEl = $('timeoutMs');
+  const regexEl = $('regex');
+  const mustAlsoEl = $('mustAlso');
+  const btnStart = $('btnStart');
+  const btnStop = $('btnStop');
+  const btnClear = $('btnClear');
+  const btnExport = $('btnExport');
+  const hitList = $('hitList');
+  const logsEl = $('logs');
+  const progEl = $('prog');
+  const checkedEl = $('checked');
+  const hitsEl = $('hits');
+  const tpsEl = $('tps');
+  const elapsedEl = $('elapsed');
+  const autoRerunEl = $('autoRerun');
+  const rerunMinEl = $('rerunMinutes');
+  const soundOnEl = $('soundOn');
+
+  // --- Persistence
+  const persistKeys = ['startId','endId','concurrency','delayMs','timeoutMs','regex','mustAlso','autoRerun','rerunMinutes','soundOn'];
+  function loadSettings() {
+    try {
+      const s = JSON.parse(localStorage.getItem('mushroomSettings') || '{}');
+      if (!s) return;
+      persistKeys.forEach(k => {
+        const v = s[k];
+        if (v === undefined) return;
+        const el = $(k);
+        if (!el) return;
+        if (el.type === 'checkbox') el.checked = !!v;
+        else el.value = v;
+      });
+      const last = localStorage.getItem('mushroomLastId');
+      if (last) startIdEl.value = Number(last);
+    } catch {}
+  }
+  function saveSettings() {
+    const s = {};
+    persistKeys.forEach(k => {
+      const el = $(k);
+      if (!el) return;
+      s[k] = (el.type === 'checkbox') ? el.checked : el.value;
+    });
+    localStorage.setItem('mushroomSettings', JSON.stringify(s));
+  }
+  loadSettings();
+
+  // --- Utils
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const prettyTime = (sec) => {
+    const m = Math.floor(sec / 60).toString().padStart(2,'0');
+    const s = Math.floor(sec % 60).toString().padStart(2,'0');
+    return `${m}:${s}`;
+  };
+  function log(msg, level='info') {
+    const row = document.createElement('div');
+    const t = new Date().toLocaleTimeString();
+    const color = level==='warn' ? 'var(--warn)' : level==='error' ? 'var(--danger)' : 'var(--muted)';
+    row.innerHTML = `<span class="muted">[${t}]</span> <span style="color:${color}">${msg}</span>`;
+    logsEl.appendChild(row);
+    logsEl.scrollTop = logsEl.scrollHeight;
+  }
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.value = 0.02;
+      o.start();
+      setTimeout(() => { o.stop(); ctx.close(); }, 180);
+    } catch {}
+  }
+
+  // --- Scanner State
+  let abortAll = null;
+  let running = false;
+  let checked = 0;
+  let hitCount = 0;
+  let startTime = 0;
+  let throughputTimer = 0;
+  let lastCheckedSnap = 0;
+  let rerunTimer = 0;
+  const found = new Map(); // id -> { id, url, title, line }
+
+  function updateStats(total, current) {
+    const pct = total ? Math.min(100, Math.round((current / total) * 100)) : 0;
+    progEl.textContent = `${pct}%`;
+    checkedEl.textContent = String(checked);
+    hitsEl.textContent = String(hitCount);
+    const elapsed = (Date.now() - startTime) / 1000;
+    elapsedEl.textContent = prettyTime(elapsed);
+  }
+
+  function refreshThroughput() {
+    clearInterval(throughputTimer);
+    throughputTimer = setInterval(() => {
+      const snap = checked;
+      const tps = Math.max(0, snap - lastCheckedSnap);
+      tpsEl.textContent = String(tps);
+      lastCheckedSnap = snap;
+    }, 1000);
+  }
+
+  function addHit(id, title, matchedLine) {
+    const url = `https://kovaze.com/blog/${id}`;
+    const row = document.createElement('div');
+    row.className = 'hit';
+    row.innerHTML = `
+      <div><strong>Hit:</strong> <a href="${url}" target="_blank" rel="noopener">${url}</a></div>
+      <div class="muted">Title: ${title ? title.replace(/</g,'&lt;').slice(0,150) : '(unknown)'}</div>
+      <div class="muted">Match: <code>${matchedLine.replace(/</g,'&lt;')}</code></div>
+    `;
+    hitList.prepend(row);
+  }
+
+  function tryMatch(html, re, also) {
+    // also: array of extra substrings that must be present (case-insensitive)
+    const hay = html.toLowerCase();
+    if (also.length && !also.every(s => hay.includes(s))) return null;
+    const lines = html.split(/\n/);
+    for (let i=0; i<lines.length; i++) {
+      const ln = lines[i];
+      if (re.test(ln)) return ln.trim().slice(0, 260);
+    }
+    return null;
+  }
+
+  async function fetchWithTimeout(url, ms, controller) {
+    const id = setTimeout(() => controller.abort('timeout'), ms);
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      return res;
+    } finally {
+      clearTimeout(id);
+    }
+  }
+
+  async function checkOne(id, re, also) {
+    // We use a read-only CORS-friendly proxy that returns raw HTML as text.
+    const url = `https://r.jina.ai/http://kovaze.com/blog/${id}`;
+    const ctrl = new AbortController();
+    abortAll && abortAll.add(ctrl); // register
+
+    try {
+      const res = await fetchWithTimeout(url, Number(timeoutEl.value || 12000), ctrl);
+      if (!res.ok) {
+        if (res.status === 404) return { id, ok:false, reason:'404' };
+        return { id, ok:false, reason:String(res.status) };
+      }
+      const html = await res.text();
+      // Quick title parse
+      const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
+      const title = titleMatch ? titleMatch[1] : '';
+      // Match the mushroom (or your regex)
+      const match = tryMatch(html, re, also);
+      if (match) {
+        if (!found.has(id)) {
+          found.set(id, { id, url: `https://kovaze.com/blog/${id}`, title, line: match });
+          hitCount++;
+          addHit(id, title, match);
+          if (soundOnEl.checked) beep();
+          log(`🍄 Found at /blog/${id}`, 'warn');
+        }
+        return { id, ok:true, hit:true };
+      }
+      return { id, ok:true, hit:false };
+    } catch (e) {
+      const reason = (e && e.name === 'AbortError') ? 'aborted' : (e && e.message) || 'error';
+      return { id, ok:false, reason };
+    } finally {
+      abortAll && abortAll.delete(ctrl);
+    }
+  }
+
+  async function runScan() {
+    // Setup
+    running = true;
+    btnStart.disabled = true;
+    btnStop.disabled = false;
+    btnExport.disabled = false;
+    saveSettings();
+
+    const startId = Math.max(1, Number(startIdEl.value || 1));
+    const endId = Math.max(startId, Number(endIdEl.value || startId));
+    const total = (endId - startId + 1);
+    const conc = Math.max(1, Math.min(128, Number(concEl.value || 8)));
+    const delay = Math.max(0, Number(delayEl.value || 0));
+    const mustAlso = (mustAlsoEl.value || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    // Build regex
+    let re;
+    try {
+      re = new RegExp(regexEl.value || 'mushroom|🍄', 'i');
+    } catch {
+      log('Invalid regex; using default /mushroom|🍄/i', 'error');
+      re = /mushroom|🍄/i;
+    }
+
+    // State
+    checked = 0;
+    startTime = Date.now();
+    lastCheckedSnap = 0;
+    refreshThroughput();
+    progEl.textContent = '0%';
+    hitCount = found.size;
+
+    // Abort bag
+    const bag = new Set();
+    abortAll = {
+      add: (c) => bag.add(c),
+      delete: (c) => bag.delete(c),
+      abort: () => { bag.forEach(c => { try { c.abort(); } catch {} }); bag.clear(); }
+    };
+
+    log(`Starting scan: ${startId} → ${endId} | concurrency=${conc}, delay=${delay}ms, timeout=${timeoutEl.value}ms`);
+    let current = 0;
+
+    // ID iterator
+    async function* idStream() {
+      for (let id = startId; id <= endId && running; id++) {
+        localStorage.setItem('mushroomLastId', String(id));
+        yield id;
+      }
+    }
+
+    // Worker pool
+    const it = idStream();
+    const workers = Array.from({ length: conc }, async () => {
+      for await (const id of it) {
+        if (!running) break;
+        const res = await checkOne(id, re, mustAlso);
+        checked++;
+        current++;
+        updateStats(total, current);
+        if (!res.ok && res.reason !== '404') {
+          log(`ID ${id}: ${res.reason}`, 'error');
+        }
+        if (delay) await sleep(delay);
+      }
+    });
+
+    try {
+      await Promise.all(workers);
+    } catch (e) {
+      log(`Scan stopped: ${(e && e.message) || e}`, 'error');
+    } finally {
+      running = false;
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      abortAll = null;
+      clearInterval(throughputTimer);
+      const elapsed = prettyTime((Date.now() - startTime) / 1000);
+      log(`Scan complete. Checked ${checked} IDs in ${elapsed}. Hits: ${hitCount}.`, 'warn');
+      // Auto-rerun
+      if (autoRerunEl.checked) {
+        const mins = Math.max(1, Number(rerunMinEl.value || 1));
+        log(`Auto-rerun scheduled in ${mins} minute(s).`, 'warn');
+        clearTimeout(rerunTimer);
+        rerunTimer = setTimeout(() => {
+          // restart with same settings and same range
+          btnStart.click();
+        }, mins * 60 * 1000);
+      }
+    }
+  }
+
+  // --- Events
+  btnStart.addEventListener('click', () => {
+    if (running) return;
+    clearTimeout(rerunTimer);
+    runScan();
+  });
+
+  btnStop.addEventListener('click', () => {
+    if (!running) return;
+    running = false;
+    if (abortAll) abortAll.abort();
+    btnStop.disabled = true;
+    btnStart.disabled = false;
+    log('Stop requested. Aborting in-flight requests…', 'warn');
+  });
+
+  btnClear.addEventListener('click', () => {
+    logsEl.innerHTML = '';
+    hitList.innerHTML = '';
+    found.clear();
+    hitCount = 0;
+    hitsEl.textContent = '0';
+    log('Cleared hits and logs.');
+  });
+
+  btnExport.addEventListener('click', () => {
+    const rows = [['id','url','title','match']];
+    for (const { id, url, title, line } of found.values()) {
+      rows.push([id, url, (title||'').replaceAll('"','""'), (line||'').replaceAll('"','""')]);
+    }
+    const csv = rows.map(r => r.map(x => `"${String(x)}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mushroom_hits_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  [startIdEl,endIdEl,concEl,delayEl,timeoutEl,regexEl,mustAlsoEl,autoRerunEl,rerunMinEl,soundOnEl]
+    .forEach(el => el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', saveSettings));
+
+  // Initial gentle log
+  log('Ready. Set your range and press Start.');
+})();
+</script>
 </body>
 </html>
