@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>🍄 Kovaze Mushroom Hunt Live</title>
+    <meta charset="utf-8">
+    <style>
+        body {font-family: Arial; background: #000; color: lime; padding: 40px; text-align: center;}
+        h1 {font-size: 3em; margin: 20px;}
+        .links {margin: 50px; font-size: 1.8em; line-height: 2;}
+        a {color: lime; display: block; margin: 20px; text-decoration: underline;}
+        .count {color: yellow; font-size: 2em; font-weight: bold;}
+    </style>
+    <script>
+        setInterval(() => location.reload(), 20000);
+        fetch('links.txt?' + Date.now())
+            .then(r => r.text())
+            .then(text => {
+                if (text.trim()) {
+                    const links = text.trim().split('\n');
+                    document.getElementById('count').innerText = 'MUSHROOMS FOUND: ' + links.length;
+                    document.getElementById('links').innerHTML = links
+                        .map(l => `<a href="${l}" target="_blank">🍄 ${l}</a>`).join('');
+                    new Audio('https://assets.mixkit.co/sfx/preview/mixkit-arcade-game-jump-coin-216.mp3').play();
+                }
+            });
+    </script>
+</head>
+<body>
+    <h1>🍄 KOVAZE MUSHROOM HUNT 2025</h1>
+    <p class="count" id="count">Loading...</p>
+    <div id="links" class="links">Scanning 25,000 blogs...</div>
+    <p>Auto-refreshes every 20s • Sound on new finds</p>
+    <p>Made by spcwby4</p>
+</body>
+</html>
