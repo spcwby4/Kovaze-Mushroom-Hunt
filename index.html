@@ -1,23 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Kovaze Mushroom Hunt – Clickable Finder</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Kovaze Mushroom Hunt – Resilient Scanner</title>
 <style>
 body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#0b1020;color:#e9eefc;margin:0}
 h1{margin:0;font-size:28px;text-align:center;padding:20px 10px;color:#7df57d}
 main{max-width:900px;margin:0 auto;padding:10px}
 section{background:#121a34;border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid rgba(255,255,255,.06)}
 input,button{font-size:15px;border-radius:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);background:#0e1732;color:#e9eefc}
-button{cursor:pointer}
-button:disabled{opacity:.5;cursor:not-allowed}
+button{cursor:pointer} button:disabled{opacity:.5;cursor:not-allowed}
 label{display:inline-block;margin:4px 10px 8px 0}
-#log{background:#0a1228;min-height:220px;max-height:400px;overflow:auto;font-family:monospace;padding:10px;border-radius:8px}
+#log{background:#0a1228;min-height:220px;max-height:420px;overflow:auto;font-family:monospace;padding:10px;border-radius:8px}
 .hit{padding:8px;border:1px solid rgba(125,245,125,.4);border-radius:8px;background:rgba(125,245,125,.07);margin:6px 0}
 a{color:#8cd0ff}
 .stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:14px}
 .stat{background:#0e1732;border:1px solid rgba(255,255,255,.05);padding:5px 9px;border-radius:6px}
+small.muted{color:#a9b6e8}
 </style>
 </head>
 <body>
@@ -26,8 +26,8 @@ a{color:#8cd0ff}
 <section>
   <label>Start ID <input id="start" type="number" value="1" min="1"></label>
   <label>End ID <input id="end" type="number" value="25000" min="1"></label>
-  <label>Concurrency <input id="conc" type="number" value="12" min="1" max="64"></label>
-  <label>Delay (ms) <input id="delay" type="number" value="150" min="0"></label>
+  <label>Concurrency <input id="conc" type="number" value="1" min="1" max="8"></label>
+  <label>Delay (ms) <input id="delay" type="number" value="1200" min="0"></label>
   <label><input id="clickableOnly" type="checkbox" checked> Clickable only</label>
   <div style="margin-top:10px">
     <button id="startBtn">Start Scan</button>
@@ -41,6 +41,7 @@ a{color:#8cd0ff}
     <span class="stat">Progress: <b id="prog">0%</b></span>
     <span class="stat">Elapsed: <b id="elapsed">00:00</b></span>
   </div>
+  <small class="muted">Tip: if you still see many 429s, keep Concurrency at 1 and increase Delay to 1500–2000ms.</small>
 </section>
 
 <section>
@@ -58,95 +59,124 @@ a{color:#8cd0ff}
 (() => {
   const $ = id => document.getElementById(id);
 
-  // Elements
-  const startEl = $('start'), endEl = $('end'), concEl = $('conc'), delayEl = $('delay');
-  const clickableOnlyEl = $('clickableOnly');
-  const startBtn = $('startBtn'), stopBtn = $('stopBtn'), clearBtn = $('clearBtn'), exportBtn = $('exportBtn');
-  const logEl = $('log'), foundEl = $('found');
-  const checkedEl = $('checked'), hitsEl = $('hits'), progEl = $('prog'), elapsedEl = $('elapsed');
+  // Controls
+  const startEl=$('start'), endEl=$('end'), concEl=$('conc'), delayEl=$('delay'), clickableOnlyEl=$('clickableOnly');
+  const startBtn=$('startBtn'), stopBtn=$('stopBtn'), clearBtn=$('clearBtn'), exportBtn=$('exportBtn');
+  const logEl=$('log'), foundEl=$('found');
+  const checkedEl=$('checked'), hitsEl=$('hits'), progEl=$('prog'), elapsedEl=$('elapsed');
 
-  // Your mushroom GIF id fragments
-  const ID_FRAGS = ["39B70122","42F1D780","5C8837E9","F01F3FFC","2512485C","423E20D4","F42229EE","F0689D5F"];
-  // Quick test for known mushrooms
-  const isMushroomSrc = (src="") => ID_FRAGS.some(frag => src.toUpperCase().includes(frag));
+  // Known mushroom GIF ID fragments
+  const FRAGS = ["39B70122","42F1D780","5C8837E9","F01F3FFC","2512485C","423E20D4","F42229EE","F0689D5F"];
+  const srcLooksMushroom = (src="") => FRAGS.some(f=>src.toUpperCase().includes(f));
+
+  // Proxy pool (rotated on 429)
+  function buildProxyUrls(target){
+    const enc = encodeURIComponent(target);
+    return [
+      `https://r.jina.ai/${target.replace(/^https?:\/\//,'')}`,                         // Jina
+      `https://api.allorigins.win/raw?url=${enc}`,                                      // AllOrigins (raw)
+      `https://thingproxy.freeboard.io/fetch/${target}`                                 // ThingProxy
+    ];
+  }
 
   // State
-  let running = false;
-  let controllers = new Set();
-  let checked = 0;
-  let hits = 0;
-  let startTime = 0;
+  let running=false, controllers=new Set(), checked=0, hits=0, startTime=0;
+  let backoffMs = 10000; // start at 10s
+  const maxBackoff = 30000; // cap 30s
 
   // Utils
-  function log(msg, level="info") {
-    const t = new Date().toLocaleTimeString();
-    const color = level==="warn" ? "#ffd166" : level==="error" ? "#ff6b6b" : "#a9b6e8";
-    const line = `<span style="color:${color}">[${t}] ${msg}</span>`;
-    logEl.insertAdjacentHTML('beforeend', line + "<br>");
+  function log(msg, level="info"){
+    const t=new Date().toLocaleTimeString();
+    const color= level==="warn"?"#ffd166": level==="error"?"#ff6b6b":"#a9b6e8";
+    logEl.insertAdjacentHTML('beforeend', `<span style="color:${color}">[${t}] ${msg}</span><br>`);
     logEl.scrollTop = logEl.scrollHeight;
   }
   const fmt = s => `${String(Math.floor(s/60)).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`;
-  function enableExport(){ exportBtn.disabled = (hits === 0); }
+  function enableExport(){ exportBtn.disabled = (hits===0); }
 
-  function addHit(id, details) {
-    const url = `https://kovaze.com/blog/${id}`;
-    hits++; hitsEl.textContent = String(hits); enableExport();
-    const div = document.createElement('div');
-    div.className = 'hit';
-    div.innerHTML = `<b>Found:</b> <a href="${url}" target="_blank" rel="noopener">${url}</a><br>
-      <small>${details.replace(/</g,'&lt;')}</small>`;
+  function addHit(id, details){
+    const url=`https://kovaze.com/blog/${id}`;
+    hits++; hitsEl.textContent=String(hits); enableExport();
+    const div=document.createElement('div');
+    div.className='hit';
+    div.innerHTML=`<b>Found:</b> <a href="${url}" target="_blank" rel="noopener">${url}</a><br><small>${details.replace(/</g,'&lt;')}</small>`;
     foundEl.prepend(div);
-    log(`🍄 Hit at /blog/${id}`, 'warn');
+    log(`🍄 Hit at /blog/${id}`,'warn');
   }
 
-  function fetchWithTimeout(url, ms, ctl) {
-    const timer = setTimeout(() => ctl.abort(), ms);
-    return fetch(url, { signal: ctl.signal }).finally(() => clearTimeout(timer));
+  function fetchWithTimeout(url, ms, ctl){
+    const timer=setTimeout(()=>ctl.abort(), ms);
+    return fetch(url,{signal:ctl.signal}).finally(()=>clearTimeout(timer));
   }
 
-  // Parse the fetched HTML and check for mushrooms
-  function scanHtmlForMushrooms(html, requireClickable) {
-    // DOMParser to properly query <img> and <a>
+  async function fetchViaProxies(targetUrl, ctl){
+    const urls = buildProxyUrls(targetUrl);
+    let lastErr;
+    for (const u of urls){
+      try {
+        const res = await fetchWithTimeout(u, 20000, ctl);
+        if (res.status === 429){
+          lastErr = new Error('429');
+          continue; // try next proxy
+        }
+        if (!res.ok){
+          lastErr = new Error(String(res.status));
+          continue;
+        }
+        const html = await res.text();
+        return {ok:true, html, proxy:u};
+      } catch(e){
+        lastErr = e;
+        continue;
+      }
+    }
+    return {ok:false, error:lastErr};
+  }
+
+  function scanHtml(html, clickableOnly){
     const doc = new DOMParser().parseFromString(html, 'text/html');
-
-    if (requireClickable) {
-      // any <a> that directly wraps an <img> with a matching src
-      const nodes = doc.querySelectorAll('a img');
-      for (const img of nodes) {
-        const src = (img.getAttribute('src') || '');
-        if (isMushroomSrc(src)) {
+    if (clickableOnly){
+      const imgs = doc.querySelectorAll('a img');
+      for (const img of imgs){
+        const src = img.getAttribute('src') || '';
+        if (srcLooksMushroom(src)){
           const a = img.closest('a');
           return `<a href="${a?.getAttribute('href')||'#'}"><img src="${src}"></a>`;
         }
       }
       return null;
     } else {
-      // any <img> with a matching src
-      const nodes = doc.querySelectorAll('img');
-      for (const img of nodes) {
-        const src = (img.getAttribute('src') || '');
-        if (isMushroomSrc(src)) {
-          return `<img src="${src}">`;
-        }
+      const imgs = doc.querySelectorAll('img');
+      for (const img of imgs){
+        const src = img.getAttribute('src') || '';
+        if (srcLooksMushroom(src)) return `<img src="${src}">`;
       }
       return null;
     }
   }
 
-  async function checkOne(id) {
-    const ctl = new AbortController();
-    controllers.add(ctl);
-    try {
-      const proxyUrl = `https://r.jina.ai/http://kovaze.com/blog/${id}`;
-      const res = await fetchWithTimeout(proxyUrl, 12000, ctl);
-      if (!res.ok) { log(`/${id} → HTTP ${res.status}`, res.status===404?'info':'error'); return; }
-      const html = await res.text();
+  async function checkOne(id){
+    const ctl = new AbortController(); controllers.add(ctl);
+    const url = `http://kovaze.com/blog/${id}`;
+    try{
+      const res = await fetchViaProxies(url, ctl);
+      if (!res.ok){
+        const code = res.error && res.error.message;
+        if (code === '429'){
+          log(`/${id} → 429 (switching proxy & backoff ${Math.round(backoffMs/1000)}s)`, 'warn');
+          await new Promise(r=>setTimeout(r, backoffMs + Math.floor(Math.random()*1500))); // jitter
+          backoffMs = Math.min(maxBackoff, backoffMs*2); // exponential
+        } else {
+          log(`/${id} → error ${code || res.error}`, 'error');
+        }
+        return;
+      }
+      // success resets backoff
+      backoffMs = 10000;
 
-      // Try to find a clickable mushroom (or any mushroom if toggle off)
-      const found = scanHtmlForMushrooms(html, clickableOnlyEl.checked);
-      if (found) addHit(id, found);
-      else log(`/${id} → 200 (no match)`);
-    } catch (e) {
+      const found = scanHtml(res.html, clickableOnlyEl.checked);
+      if (found) addHit(id, found); else log(`/${id} → 200 (no match)`);
+    } catch(e){
       if (e.name === 'AbortError') log(`/${id} aborted`, 'warn');
       else log(`/${id} error: ${e.message||e}`, 'error');
     } finally {
@@ -154,71 +184,71 @@ a{color:#8cd0ff}
     }
   }
 
-  async function startScan() {
+  async function startScan(){
     if (running) return;
-    running = true; controllers.clear();
-    startBtn.disabled = true; stopBtn.disabled = false; exportBtn.disabled = true;
+    running=true; controllers.clear();
+    startBtn.disabled=true; stopBtn.disabled=false; exportBtn.disabled=true;
 
-    hits = 0; checked = 0;
-    hitsEl.textContent = '0'; checkedEl.textContent = '0'; progEl.textContent = '0%';
-    foundEl.innerHTML = ''; startTime = Date.now();
+    hits=0; checked=0;
+    hitsEl.textContent='0'; checkedEl.textContent='0'; progEl.textContent='0%';
+    foundEl.innerHTML=''; startTime=Date.now();
 
-    const s = Math.max(1, Number(startEl.value || 1));
-    const e = Math.max(s, Number(endEl.value || s));
-    const c = Math.max(1, Math.min(64, Number(concEl.value || 8)));
-    const d = Math.max(0, Number(delayEl.value || 0));
-    const total = e - s + 1;
+    const s=Math.max(1, Number(startEl.value||1));
+    const e=Math.max(s, Number(endEl.value||s));
+    const c=Math.max(1, Math.min(8, Number(concEl.value||1)));
+    const d=Math.max(0, Number(delayEl.value||0));
+    const total=e-s+1;
 
-    log(`Starting scan ${s} → ${e}  (concurrency=${c}, delay=${d}ms, clickableOnly=${clickableOnlyEl.checked})`);
+    log(`Starting scan ${s} → ${e} (conc=${c}, delay=${d}ms, clickableOnly=${clickableOnlyEl.checked})`);
 
-    const queue = Array.from({ length: total }, (_, i) => s + i);
+    const queue = Array.from({length:total},(_,i)=>s+i);
 
     const worker = async () => {
-      while (running && queue.length) {
+      while (running && queue.length){
         const id = queue.shift();
         await checkOne(id);
-        checked++; checkedEl.textContent = String(checked);
-        progEl.textContent = Math.min(100, Math.round(checked / total * 100)) + '%';
-        elapsedEl.textContent = fmt((Date.now() - startTime) / 1000);
-        if (d) await new Promise(r => setTimeout(r, d));
+        checked++; checkedEl.textContent=String(checked);
+        progEl.textContent = Math.min(100, Math.round(checked/total*100)) + '%';
+        elapsedEl.textContent = (function(sec){const m=String(Math.floor(sec/60)).padStart(2,'0');const s=String(Math.floor(sec%60)).padStart(2,'0');return `${m}:${s}`;})((Date.now()-startTime)/1000);
+        if (d) await new Promise(r=>setTimeout(r,d));
       }
     };
 
-    await Promise.all(Array.from({ length: c }, worker));
-    running = false; startBtn.disabled = false; stopBtn.disabled = true;
-    log('Scan complete.', 'warn');
+    await Promise.all(Array.from({length:c}, worker));
+    running=false; startBtn.disabled=false; stopBtn.disabled=true;
+    log('Scan complete.','warn');
   }
 
-  function stopScan() {
+  function stopScan(){
     if (!running) return;
-    running = false;
-    controllers.forEach(c => { try { c.abort(); } catch {} });
+    running=false;
+    controllers.forEach(c=>{try{c.abort();}catch{}});
     controllers.clear();
-    startBtn.disabled = false; stopBtn.disabled = true;
-    log('Stopped.', 'warn');
+    startBtn.disabled=false; stopBtn.disabled=true;
+    log('Stopped.','warn');
   }
 
-  function clearAll() {
-    logEl.innerHTML = ''; foundEl.innerHTML = '';
-    hits = 0; checked = 0;
-    hitsEl.textContent = '0'; checkedEl.textContent = '0'; progEl.textContent = '0%'; elapsedEl.textContent = '00:00';
-    enableExport(); log('Cleared.');
+  function clearAll(){
+    logEl.innerHTML=''; foundEl.innerHTML='';
+    hits=0; checked=0;
+    hitsEl.textContent='0'; checkedEl.textContent='0'; progEl.textContent='0%'; elapsedEl.textContent='00:00';
+    exportBtn.disabled=true;
+    log('Cleared.');
   }
 
-  function exportHits() {
+  function exportHits(){
     if (!hits) return;
-    const rows = [['id','url']];
-    [...foundEl.querySelectorAll('a')].forEach(a => {
-      const id = a.href.split('/').pop();
-      rows.push([id, a.href]);
+    const rows=[['id','url']];
+    [...foundEl.querySelectorAll('a')].forEach(a=>{
+      const id=a.href.split('/').pop();
+      rows.push([id,a.href]);
     });
-    const csv = rows.map(r => r.map(x => `"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'mushroom_hits.csv';
-    a.click();
-    URL.revokeObjectURL(a.href);
+    const csv=rows.map(r=>r.map(x=>`"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
+    const blob=new Blob([csv],{type:'text/csv'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='mushroom_hits.csv';
+    a.click(); URL.revokeObjectURL(a.href);
   }
 
   startBtn.addEventListener('click', startScan);
@@ -226,7 +256,7 @@ a{color:#8cd0ff}
   clearBtn.addEventListener('click', clearAll);
   exportBtn.addEventListener('click', exportHits);
 
-  log('Ready. Set your range and press Start.');
+  log('Ready. Concurrency=1 & Delay=1200 to start. Increase slowly if 429s disappear.');
 })();
 </script>
 </body>
