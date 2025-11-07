@@ -17,6 +17,7 @@ button:disabled{opacity:.5;cursor:not-allowed}
 a{color:#8cd0ff}
 .stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:14px}
 .stat{background:#0e1732;border:1px solid rgba(255,255,255,.05);padding:5px 9px;border-radius:6px}
+label{display:inline-block;margin:4px 8px 8px 0}
 </style>
 </head>
 <body>
@@ -28,70 +29,215 @@ a{color:#8cd0ff}
 <label>Concurrency <input id="conc" type="number" value="12" min="1" max="64"></label>
 <label>Delay (ms) <input id="delay" type="number" value="150" min="0"></label>
 <div style="margin-top:10px">
-<button id="startBtn">Start Scan</button>
-<button id="stopBtn" disabled>Stop</button>
-<button id="clearBtn">Clear Log</button>
-<button id="exportBtn" disabled>Export Hits</button>
+  <button id="startBtn">Start Scan</button>
+  <button id="stopBtn" disabled>Stop</button>
+  <button id="clearBtn">Clear Log</button>
+  <button id="exportBtn" disabled>Export Hits</button>
 </div>
 <div class="stats">
-<span class="stat">Checked: <b id="checked">0</b></span>
-<span class="stat">Hits: <b id="hits">0</b></span>
-<span class="stat">Progress: <b id="prog">0%</b></span>
-<span class="stat">Elapsed: <b id="elapsed">00:00</b></span>
+  <span class="stat">Checked: <b id="checked">0</b></span>
+  <span class="stat">Hits: <b id="hits">0</b></span>
+  <span class="stat">Progress: <b id="prog">0%</b></span>
+  <span class="stat">Elapsed: <b id="elapsed">00:00</b></span>
 </div>
 </section>
+
 <section>
 <h3>Found Mushrooms</h3>
 <div id="found"></div>
 </section>
+
 <section>
 <h3>Log</h3>
 <div id="log"></div>
 </section>
 </main>
+
 <script>
-const ids=["39B70122","42F1D780","5C8837E9","F01F3FFC","2512485C","423E20D4","F42229EE","F0689D5F"];
-const regex=new RegExp(ids.join("|"),"i");
-const startEl=start,endEl=end,concEl=conc,delayEl=delay;
-const logEl=log,foundEl=found,chk=checked,hitsEl=hits,progEl=prog,elapsedEl=elapsed;
-let run=false,controllers=new Set(),checked=0,hits=0,startTime=0;
-function log(msg){const t=new Date().toLocaleTimeString();logEl.innerHTML+=`[${t}] ${msg}<br>`;logEl.scrollTop=logEl.scrollHeight}
-function addHit(id,title,line){const url=`https://kovaze.com/blog/${id}`;hits++;hitsEl.textContent=hits;
-const div=document.createElement("div");div.className="hit";div.innerHTML=`<b>Found:</b> <a href="${url}" target="_blank">${url}</a><br><small>${line.replace(/</g,"&lt;")}</small>`;foundEl.prepend(div);log(`🍄 Hit at /blog/${id}`)}
-function fmt(s){const m=Math.floor(s/60).toString().padStart(2,"0"),ss=Math.floor(s%60).toString().padStart(2,"0");return`${m}:${ss}`}
-async function fetchWithTimeout(url,ms,ctl){const id=setTimeout(()=>ctl.abort(),ms);try{return await fetch(url,{signal:ctl.signal})}finally{clearTimeout(id)}}
-async function check(id){
- const ctl=new AbortController();controllers.add(ctl);
- try{
-  const res=await fetchWithTimeout(`https://r.jina.ai/http://kovaze.com/blog/${id}`,12000,ctl);
-  if(!res.ok){controllers.delete(ctl);return;}
-  const html=await res.text();
-  if(regex.test(html)){
-    const line=(html.match(/<img[^>]+src="[^"]+\.gif"[^>]*>/i)||["match"])[0];
-    addHit(id,"",line);
+(() => {
+  // Always query by ID (don’t rely on implicit globals)
+  const $ = (id) => document.getElementById(id);
+
+  // Elements
+  const startEl = $('start');
+  const endEl = $('end');
+  const concEl = $('conc');
+  const delayEl = $('delay');
+  const startBtn = $('startBtn');
+  const stopBtn = $('stopBtn');
+  const clearBtn = $('clearBtn');
+  const exportBtn = $('exportBtn');
+  const logEl = $('log');
+  const foundEl = $('found');
+  const checkedEl = $('checked');
+  const hitsEl = $('hits');
+  const progEl = $('prog');
+  const elapsedEl = $('elapsed');
+
+  // The GIF id fragments you shared
+  const idFrags = [
+    "39B70122","42F1D780","5C8837E9","F01F3FFC",
+    "2512485C","423E20D4","F42229EE","F0689D5F"
+  ];
+  const MUSHROOM_RE = new RegExp(idFrags.join('|'), 'i');
+
+  // State
+  let running = false;
+  let controllers = new Set();
+  let checked = 0;
+  let hits = 0;
+  let startTime = 0;
+
+  // Utils
+  function log(msg) {
+    const t = new Date().toLocaleTimeString();
+    logEl.innerHTML += `[${t}] ${msg}<br>`;
+    logEl.scrollTop = logEl.scrollHeight;
   }
- }catch{}finally{controllers.delete(ctl)}
-}
-async function startScan(){
- run=true;controllers.clear();
- document.getElementById("startBtn").disabled=true;
- document.getElementById("stopBtn").disabled=false;
- startTime=Date.now();checked=0;hits=0;hitsEl.textContent=0;
- const s=+startEl.value,e=+endEl.value,c=+concEl.value,d=+delayEl.value;
- const total=e-s+1;log(`Starting scan ${s}→${e} concurrency=${c}`);
- const ids=Array.from({length:total},(_,i)=>s+i);
- const worker=async()=>{while(run&&ids.length){const id=ids.shift();await check(id);checked++;chk.textContent=checked;
- const pct=Math.min(100,Math.round(checked/total*100));progEl.textContent=pct+"%";
- elapsedEl.textContent=fmt((Date.now()-startTime)/1000);
- if(d)await new Promise(r=>setTimeout(r,d));}}
- await Promise.all(Array.from({length:c},worker));
- log("Scan complete.");document.getElementById("startBtn").disabled=false;document.getElementById("stopBtn").disabled=true;run=false;
-}
-startBtn.onclick=startScan;
-stopBtn.onclick=()=>{run=false;controllers.forEach(c=>c.abort());controllers.clear();log("Stopped.");document.getElementById("startBtn").disabled=false;stopBtn.disabled=true;}
-clearBtn.onclick=()=>{logEl.innerHTML="";foundEl.innerHTML="";hits=checked=0;hitsEl.textContent=0;chk.textContent=0;progEl.textContent="0%";log("Cleared.");}
-exportBtn.onclick=()=>{if(!hits)return;let csv="id,url\n";[...foundEl.querySelectorAll("a")].forEach(a=>{const id=a.href.split("/").pop();csv+=`${id},${a.href}\n`});
-const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mushroom_hits.csv";a.click();URL.revokeObjectURL(a.href);}
+  function fmt(sec) {
+    const m = String(Math.floor(sec/60)).padStart(2,'0');
+    const s = String(Math.floor(sec%60)).padStart(2,'0');
+    return `${m}:${s}`;
+  }
+  function enableExportIfHits() { exportBtn.disabled = hits === 0; }
+
+  function addHit(id, line) {
+    const url = `https://kovaze.com/blog/${id}`;
+    hits++;
+    hitsEl.textContent = String(hits);
+    enableExportIfHits();
+
+    const div = document.createElement('div');
+    div.className = 'hit';
+    div.innerHTML = `<b>Found:</b> <a href="${url}" target="_blank" rel="noopener">${url}</a><br>
+                     <small>${(line || 'match').replace(/</g,'&lt;')}</small>`;
+    foundEl.prepend(div);
+    log(`🍄 Hit at /blog/${id}`);
+  }
+
+  function fetchWithTimeout(url, ms, ctl) {
+    const timer = setTimeout(() => ctl.abort(), ms);
+    return fetch(url, { signal: ctl.signal })
+      .finally(() => clearTimeout(timer));
+  }
+
+  async function checkOne(id) {
+    const ctl = new AbortController();
+    controllers.add(ctl);
+    try {
+      // Use read-only proxy to bypass CORS
+      const res = await fetchWithTimeout(`https://r.jina.ai/http://kovaze.com/blog/${id}`, 12000, ctl);
+      if (!res.ok) return;
+      const html = await res.text();
+
+      // Prefer scanning <img ... .gif> tags; fall back to whole HTML
+      const onlyImgs = (html.match(/<img[^>]+src="[^"]+\.gif"[^>]*>/gi) || []).join('\n');
+      const haystack = onlyImgs || html;
+
+      if (MUSHROOM_RE.test(haystack)) {
+        const line = (onlyImgs.match(/<img[^>]+src="[^"]+\.gif"[^>]*>/i) || [haystack.slice(0,180)])[0];
+        addHit(id, line);
+      }
+    } catch (e) {
+      // ignore aborts/errors to keep pool moving
+    } finally {
+      controllers.delete(ctl);
+    }
+  }
+
+  async function startScan() {
+    if (running) return;
+    running = true;
+    controllers.clear();
+
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    exportBtn.disabled = true;
+
+    hits = 0; checked = 0;
+    hitsEl.textContent = '0';
+    checkedEl.textContent = '0';
+    progEl.textContent = '0%';
+    foundEl.innerHTML = '';
+
+    startTime = Date.now();
+    const s = Math.max(1, Number(startEl.value || 1));
+    const e = Math.max(s, Number(endEl.value || s));
+    const c = Math.max(1, Math.min(64, Number(concEl.value || 8)));
+    const d = Math.max(0, Number(delayEl.value || 0));
+    const total = e - s + 1;
+
+    log(`Starting scan ${s} → ${e}  (concurrency=${c}, delay=${d}ms)`);
+
+    const queue = Array.from({ length: total }, (_, i) => s + i);
+
+    const worker = async () => {
+      while (running && queue.length) {
+        const id = queue.shift();
+        await checkOne(id);
+        checked++;
+        checkedEl.textContent = String(checked);
+        progEl.textContent = Math.min(100, Math.round(checked / total * 100)) + '%';
+        elapsedEl.textContent = fmt((Date.now() - startTime) / 1000);
+        if (d) await new Promise(r => setTimeout(r, d));
+      }
+    };
+
+    await Promise.all(Array.from({ length: c }, worker));
+
+    running = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    log('Scan complete.');
+  }
+
+  function stopScan() {
+    if (!running) return;
+    running = false;
+    controllers.forEach(c => { try { c.abort(); } catch {} });
+    controllers.clear();
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    log('Stopped.');
+  }
+
+  function clearAll() {
+    logEl.innerHTML = '';
+    foundEl.innerHTML = '';
+    hits = 0; checked = 0;
+    hitsEl.textContent = '0';
+    checkedEl.textContent = '0';
+    progEl.textContent = '0%';
+    elapsedEl.textContent = '00:00';
+    enableExportIfHits();
+    log('Cleared.');
+  }
+
+  function exportHits() {
+    if (!hits) return;
+    const rows = [['id','url']];
+    [...foundEl.querySelectorAll('a')].forEach(a => {
+      const id = a.href.split('/').pop();
+      rows.push([id, a.href]);
+    });
+    const csv = rows.map(r => r.map(x => `"${String(x).replaceAll('"','""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mushroom_hits.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // Wire up events
+  startBtn.addEventListener('click', startScan);
+  stopBtn.addEventListener('click', stopScan);
+  clearBtn.addEventListener('click', clearAll);
+  exportBtn.addEventListener('click', exportHits);
+
+  // Friendly boot log
+  log('Ready. Set your range and press Start.');
+})();
 </script>
 </body>
 </html>
