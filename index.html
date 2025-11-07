@@ -3,445 +3,95 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KOVAZE MUSHROOM HUNT — Better Scanner</title>
+<title>Kovaze Mushroom Hunt – Smart Scanner</title>
 <style>
-  :root { --bg:#0b1020; --card:#121a34; --ink:#e9eefc; --muted:#a9b6e8; --accent:#7df57d; --warn:#ffd166; --danger:#ff6b6b; }
-  * { box-sizing: border-box; }
-  body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, "Apple Color Emoji","Segoe UI Emoji"; background: var(--bg); color: var(--ink); }
-  header { padding:20px; text-align:center; }
-  h1 { margin:0 0 6px; font-size: clamp(20px, 3.8vw, 34px); letter-spacing: .5px; }
-  header p { margin:0; color: var(--muted); }
-  .wrap { max-width: 1100px; margin: 0 auto; padding: 12px 16px 28px; display: grid; gap: 16px; }
-  .card { background: var(--card); border: 1px solid rgba(255,255,255,.05); border-radius: 12px; padding: 16px; }
-  .row { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
-  .col-12 { grid-column: span 12; }
-  .col-6 { grid-column: span 6; }
-  .col-4 { grid-column: span 4; }
-  .col-3 { grid-column: span 3; }
-  .col-2 { grid-column: span 2; }
-  label { display:block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-  input, select { width: 100%; background: #0e1732; color: var(--ink); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
-  input[type="checkbox"] { width:auto; }
-  button { appearance: none; border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 600; cursor: pointer; }
-  .btn { background: #2b3a7a; color: #fff; }
-  .btn:hover { filter: brightness(1.08); }
-  .btn-accent { background: #1f7a3b; }
-  .btn-warn { background: #7a5a1f; }
-  .btn-danger { background: #7a2b2b; }
-  .badge { display:inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #1b244a; color: var(--muted); margin-left:6px; }
-  .stat { display: inline-flex; align-items: center; gap:6px; padding:6px 10px; background:#0e1732; border:1px solid rgba(255,255,255,.06); border-radius:8px; font-size:13px; color:var(--muted); }
-  .stat strong { color: var(--ink); }
-  .flex { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .logs { max-height: 320px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:#0a1228; border:1px solid rgba(255,255,255,.06); border-radius:8px; padding:10px; }
-  .hits { max-height: 380px; overflow: auto; }
-  .hit { padding: 8px 10px; border:1px solid rgba(125,245,125,.3); background: rgba(125,245,125,.08); border-radius:8px; margin-bottom:8px; }
-  .muted { color: var(--muted); }
-  a { color: #8cd0ff; text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  footer { text-align:center; color: var(--muted); padding: 18px; font-size: 13px; }
-  @media (max-width: 900px) { .col-6,.col-4,.col-3,.col-2 { grid-column: span 12; } }
+body{font-family:system-ui,Segoe UI,Roboto,Arial;background:#0b1020;color:#e9eefc;margin:0}
+h1{margin:0;font-size:28px;text-align:center;padding:20px 10px;color:#7df57d}
+main{max-width:900px;margin:0 auto;padding:10px}
+section{background:#121a34;border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid rgba(255,255,255,.06)}
+input,button{font-size:15px;border-radius:8px;padding:8px 10px;border:1px solid rgba(255,255,255,.1);background:#0e1732;color:#e9eefc}
+button{cursor:pointer}
+button:disabled{opacity:.5;cursor:not-allowed}
+#log{background:#0a1228;min-height:220px;max-height:400px;overflow:auto;font-family:monospace;padding:10px;border-radius:8px}
+.hit{padding:8px;border:1px solid rgba(125,245,125,.4);border-radius:8px;background:rgba(125,245,125,.07);margin:6px 0}
+a{color:#8cd0ff}
+.stats{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:14px}
+.stat{background:#0e1732;border:1px solid rgba(255,255,255,.05);padding:5px 9px;border-radius:6px}
 </style>
 </head>
 <body>
-  <header>
-    <h1>KOVAZE MUSHROOM HUNT — Better Scanner</h1>
-    <p>Scans blog pages and flags ones that contain a clickable mushroom. HTML is read via a safe read-only proxy to bypass CORS.</p>
-  </header>
-
-  <div class="wrap">
-    <section class="card">
-      <div class="row">
-        <div class="col-3">
-          <label>Start ID</label>
-          <input id="startId" type="number" min="1" value="1" />
-        </div>
-        <div class="col-3">
-          <label>End ID</label>
-          <input id="endId" type="number" min="1" value="25000" />
-        </div>
-        <div class="col-2">
-          <label>Concurrency</label>
-          <input id="concurrency" type="number" min="1" max="128" value="16" />
-        </div>
-        <div class="col-2">
-          <label>Batch delay (ms)</label>
-          <input id="delayMs" type="number" min="0" value="150" />
-        </div>
-        <div class="col-2">
-          <label>Timeout per fetch (ms)</label>
-          <input id="timeoutMs" type="number" min="100" value="12000" />
-        </div>
-
-        <div class="col-6">
-          <label>Match rule (regex, case-insensitive)</label>
-          <input id="regex" type="text" value="mushroom|🍄" />
-        </div>
-        <div class="col-6">
-          <label>Must also contain (optional, comma-separated)</label>
-          <input id="mustAlso" type="text" placeholder="e.g. clickable,href" />
-        </div>
-
-        <div class="col-12">
-          <div class="flex">
-            <button id="btnStart" class="btn btn-accent">Start Scan</button>
-            <button id="btnStop" class="btn btn-danger" disabled>Stop</button>
-            <button id="btnClear" class="btn">Clear Logs</button>
-            <button id="btnExport" class="btn">Export Hits (.csv)</button>
-            <label class="stat">Auto-rerun
-              <input id="autoRerun" type="checkbox" />
-              <span class="muted">every</span>
-              <input id="rerunMinutes" type="number" min="1" value="1" style="width:80px" />
-              <span class="muted">min</span>
-            </label>
-            <label class="stat">
-              <input id="soundOn" type="checkbox" checked /> Sound on hit
-            </label>
-            <span class="stat">Progress: <strong id="prog">0%</strong></span>
-            <span class="stat">Checked: <strong id="checked">0</strong></span>
-            <span class="stat">Hits: <strong id="hits">0</strong></span>
-            <span class="stat">Throughput: <strong id="tps">0</strong>/s</span>
-            <span class="stat">Elapsed: <strong id="elapsed">00:00</strong></span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="card">
-      <h3 style="margin:0 0 8px;">Found Mushrooms</h3>
-      <div id="hitList" class="hits"></div>
-    </section>
-
-    <section class="card">
-      <h3 style="margin:0 0 8px;">Logs</h3>
-      <div id="logs" class="logs" aria-live="polite"></div>
-    </section>
-  </div>
-
-  <footer>
-    <span>Made for the hunt. Uses r.jina.ai to fetch public HTML safely from the browser.</span>
-  </footer>
-
+<h1>🍄 Kovaze Mushroom Hunt</h1>
+<main>
+<section>
+<label>Start ID <input id="start" type="number" value="1" min="1"></label>
+<label>End ID <input id="end" type="number" value="25000" min="1"></label>
+<label>Concurrency <input id="conc" type="number" value="12" min="1" max="64"></label>
+<label>Delay (ms) <input id="delay" type="number" value="150" min="0"></label>
+<div style="margin-top:10px">
+<button id="startBtn">Start Scan</button>
+<button id="stopBtn" disabled>Stop</button>
+<button id="clearBtn">Clear Log</button>
+<button id="exportBtn" disabled>Export Hits</button>
+</div>
+<div class="stats">
+<span class="stat">Checked: <b id="checked">0</b></span>
+<span class="stat">Hits: <b id="hits">0</b></span>
+<span class="stat">Progress: <b id="prog">0%</b></span>
+<span class="stat">Elapsed: <b id="elapsed">00:00</b></span>
+</div>
+</section>
+<section>
+<h3>Found Mushrooms</h3>
+<div id="found"></div>
+</section>
+<section>
+<h3>Log</h3>
+<div id="log"></div>
+</section>
+</main>
 <script>
-(() => {
-  // --- Elements
-  const $ = (id) => document.getElementById(id);
-  const startIdEl = $('startId');
-  const endIdEl = $('endId');
-  const concEl = $('concurrency');
-  const delayEl = $('delayMs');
-  const timeoutEl = $('timeoutMs');
-  const regexEl = $('regex');
-  const mustAlsoEl = $('mustAlso');
-  const btnStart = $('btnStart');
-  const btnStop = $('btnStop');
-  const btnClear = $('btnClear');
-  const btnExport = $('btnExport');
-  const hitList = $('hitList');
-  const logsEl = $('logs');
-  const progEl = $('prog');
-  const checkedEl = $('checked');
-  const hitsEl = $('hits');
-  const tpsEl = $('tps');
-  const elapsedEl = $('elapsed');
-  const autoRerunEl = $('autoRerun');
-  const rerunMinEl = $('rerunMinutes');
-  const soundOnEl = $('soundOn');
-
-  // --- Persistence
-  const persistKeys = ['startId','endId','concurrency','delayMs','timeoutMs','regex','mustAlso','autoRerun','rerunMinutes','soundOn'];
-  function loadSettings() {
-    try {
-      const s = JSON.parse(localStorage.getItem('mushroomSettings') || '{}');
-      if (!s) return;
-      persistKeys.forEach(k => {
-        const v = s[k];
-        if (v === undefined) return;
-        const el = $(k);
-        if (!el) return;
-        if (el.type === 'checkbox') el.checked = !!v;
-        else el.value = v;
-      });
-      const last = localStorage.getItem('mushroomLastId');
-      if (last) startIdEl.value = Number(last);
-    } catch {}
+const ids=["39B70122","42F1D780","5C8837E9","F01F3FFC","2512485C","423E20D4","F42229EE","F0689D5F"];
+const regex=new RegExp(ids.join("|"),"i");
+const startEl=start,endEl=end,concEl=conc,delayEl=delay;
+const logEl=log,foundEl=found,chk=checked,hitsEl=hits,progEl=prog,elapsedEl=elapsed;
+let run=false,controllers=new Set(),checked=0,hits=0,startTime=0;
+function log(msg){const t=new Date().toLocaleTimeString();logEl.innerHTML+=`[${t}] ${msg}<br>`;logEl.scrollTop=logEl.scrollHeight}
+function addHit(id,title,line){const url=`https://kovaze.com/blog/${id}`;hits++;hitsEl.textContent=hits;
+const div=document.createElement("div");div.className="hit";div.innerHTML=`<b>Found:</b> <a href="${url}" target="_blank">${url}</a><br><small>${line.replace(/</g,"&lt;")}</small>`;foundEl.prepend(div);log(`🍄 Hit at /blog/${id}`)}
+function fmt(s){const m=Math.floor(s/60).toString().padStart(2,"0"),ss=Math.floor(s%60).toString().padStart(2,"0");return`${m}:${ss}`}
+async function fetchWithTimeout(url,ms,ctl){const id=setTimeout(()=>ctl.abort(),ms);try{return await fetch(url,{signal:ctl.signal})}finally{clearTimeout(id)}}
+async function check(id){
+ const ctl=new AbortController();controllers.add(ctl);
+ try{
+  const res=await fetchWithTimeout(`https://r.jina.ai/http://kovaze.com/blog/${id}`,12000,ctl);
+  if(!res.ok){controllers.delete(ctl);return;}
+  const html=await res.text();
+  if(regex.test(html)){
+    const line=(html.match(/<img[^>]+src="[^"]+\.gif"[^>]*>/i)||["match"])[0];
+    addHit(id,"",line);
   }
-  function saveSettings() {
-    const s = {};
-    persistKeys.forEach(k => {
-      const el = $(k);
-      if (!el) return;
-      s[k] = (el.type === 'checkbox') ? el.checked : el.value;
-    });
-    localStorage.setItem('mushroomSettings', JSON.stringify(s));
-  }
-  loadSettings();
-
-  // --- Utils
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-  const prettyTime = (sec) => {
-    const m = Math.floor(sec / 60).toString().padStart(2,'0');
-    const s = Math.floor(sec % 60).toString().padStart(2,'0');
-    return `${m}:${s}`;
-  };
-  function log(msg, level='info') {
-    const row = document.createElement('div');
-    const t = new Date().toLocaleTimeString();
-    const color = level==='warn' ? 'var(--warn)' : level==='error' ? 'var(--danger)' : 'var(--muted)';
-    row.innerHTML = `<span class="muted">[${t}]</span> <span style="color:${color}">${msg}</span>`;
-    logsEl.appendChild(row);
-    logsEl.scrollTop = logsEl.scrollHeight;
-  }
-  function beep() {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.type = 'sine'; o.frequency.value = 880;
-      g.gain.value = 0.02;
-      o.start();
-      setTimeout(() => { o.stop(); ctx.close(); }, 180);
-    } catch {}
-  }
-
-  // --- Scanner State
-  let abortAll = null;
-  let running = false;
-  let checked = 0;
-  let hitCount = 0;
-  let startTime = 0;
-  let throughputTimer = 0;
-  let lastCheckedSnap = 0;
-  let rerunTimer = 0;
-  const found = new Map(); // id -> { id, url, title, line }
-
-  function updateStats(total, current) {
-    const pct = total ? Math.min(100, Math.round((current / total) * 100)) : 0;
-    progEl.textContent = `${pct}%`;
-    checkedEl.textContent = String(checked);
-    hitsEl.textContent = String(hitCount);
-    const elapsed = (Date.now() - startTime) / 1000;
-    elapsedEl.textContent = prettyTime(elapsed);
-  }
-
-  function refreshThroughput() {
-    clearInterval(throughputTimer);
-    throughputTimer = setInterval(() => {
-      const snap = checked;
-      const tps = Math.max(0, snap - lastCheckedSnap);
-      tpsEl.textContent = String(tps);
-      lastCheckedSnap = snap;
-    }, 1000);
-  }
-
-  function addHit(id, title, matchedLine) {
-    const url = `https://kovaze.com/blog/${id}`;
-    const row = document.createElement('div');
-    row.className = 'hit';
-    row.innerHTML = `
-      <div><strong>Hit:</strong> <a href="${url}" target="_blank" rel="noopener">${url}</a></div>
-      <div class="muted">Title: ${title ? title.replace(/</g,'&lt;').slice(0,150) : '(unknown)'}</div>
-      <div class="muted">Match: <code>${matchedLine.replace(/</g,'&lt;')}</code></div>
-    `;
-    hitList.prepend(row);
-  }
-
-  function tryMatch(html, re, also) {
-    // also: array of extra substrings that must be present (case-insensitive)
-    const hay = html.toLowerCase();
-    if (also.length && !also.every(s => hay.includes(s))) return null;
-    const lines = html.split(/\n/);
-    for (let i=0; i<lines.length; i++) {
-      const ln = lines[i];
-      if (re.test(ln)) return ln.trim().slice(0, 260);
-    }
-    return null;
-  }
-
-  async function fetchWithTimeout(url, ms, controller) {
-    const id = setTimeout(() => controller.abort('timeout'), ms);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      return res;
-    } finally {
-      clearTimeout(id);
-    }
-  }
-
-  async function checkOne(id, re, also) {
-    // We use a read-only CORS-friendly proxy that returns raw HTML as text.
-    const url = `https://r.jina.ai/http://kovaze.com/blog/${id}`;
-    const ctrl = new AbortController();
-    abortAll && abortAll.add(ctrl); // register
-
-    try {
-      const res = await fetchWithTimeout(url, Number(timeoutEl.value || 12000), ctrl);
-      if (!res.ok) {
-        if (res.status === 404) return { id, ok:false, reason:'404' };
-        return { id, ok:false, reason:String(res.status) };
-      }
-      const html = await res.text();
-      // Quick title parse
-      const titleMatch = html.match(/<title[^>]*>(.*?)<\/title>/i);
-      const title = titleMatch ? titleMatch[1] : '';
-      // Match the mushroom (or your regex)
-      const match = tryMatch(html, re, also);
-      if (match) {
-        if (!found.has(id)) {
-          found.set(id, { id, url: `https://kovaze.com/blog/${id}`, title, line: match });
-          hitCount++;
-          addHit(id, title, match);
-          if (soundOnEl.checked) beep();
-          log(`🍄 Found at /blog/${id}`, 'warn');
-        }
-        return { id, ok:true, hit:true };
-      }
-      return { id, ok:true, hit:false };
-    } catch (e) {
-      const reason = (e && e.name === 'AbortError') ? 'aborted' : (e && e.message) || 'error';
-      return { id, ok:false, reason };
-    } finally {
-      abortAll && abortAll.delete(ctrl);
-    }
-  }
-
-  async function runScan() {
-    // Setup
-    running = true;
-    btnStart.disabled = true;
-    btnStop.disabled = false;
-    btnExport.disabled = false;
-    saveSettings();
-
-    const startId = Math.max(1, Number(startIdEl.value || 1));
-    const endId = Math.max(startId, Number(endIdEl.value || startId));
-    const total = (endId - startId + 1);
-    const conc = Math.max(1, Math.min(128, Number(concEl.value || 8)));
-    const delay = Math.max(0, Number(delayEl.value || 0));
-    const mustAlso = (mustAlsoEl.value || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-
-    // Build regex
-    let re;
-    try {
-      re = new RegExp(regexEl.value || 'mushroom|🍄', 'i');
-    } catch {
-      log('Invalid regex; using default /mushroom|🍄/i', 'error');
-      re = /mushroom|🍄/i;
-    }
-
-    // State
-    checked = 0;
-    startTime = Date.now();
-    lastCheckedSnap = 0;
-    refreshThroughput();
-    progEl.textContent = '0%';
-    hitCount = found.size;
-
-    // Abort bag
-    const bag = new Set();
-    abortAll = {
-      add: (c) => bag.add(c),
-      delete: (c) => bag.delete(c),
-      abort: () => { bag.forEach(c => { try { c.abort(); } catch {} }); bag.clear(); }
-    };
-
-    log(`Starting scan: ${startId} → ${endId} | concurrency=${conc}, delay=${delay}ms, timeout=${timeoutEl.value}ms`);
-    let current = 0;
-
-    // ID iterator
-    async function* idStream() {
-      for (let id = startId; id <= endId && running; id++) {
-        localStorage.setItem('mushroomLastId', String(id));
-        yield id;
-      }
-    }
-
-    // Worker pool
-    const it = idStream();
-    const workers = Array.from({ length: conc }, async () => {
-      for await (const id of it) {
-        if (!running) break;
-        const res = await checkOne(id, re, mustAlso);
-        checked++;
-        current++;
-        updateStats(total, current);
-        if (!res.ok && res.reason !== '404') {
-          log(`ID ${id}: ${res.reason}`, 'error');
-        }
-        if (delay) await sleep(delay);
-      }
-    });
-
-    try {
-      await Promise.all(workers);
-    } catch (e) {
-      log(`Scan stopped: ${(e && e.message) || e}`, 'error');
-    } finally {
-      running = false;
-      btnStart.disabled = false;
-      btnStop.disabled = true;
-      abortAll = null;
-      clearInterval(throughputTimer);
-      const elapsed = prettyTime((Date.now() - startTime) / 1000);
-      log(`Scan complete. Checked ${checked} IDs in ${elapsed}. Hits: ${hitCount}.`, 'warn');
-      // Auto-rerun
-      if (autoRerunEl.checked) {
-        const mins = Math.max(1, Number(rerunMinEl.value || 1));
-        log(`Auto-rerun scheduled in ${mins} minute(s).`, 'warn');
-        clearTimeout(rerunTimer);
-        rerunTimer = setTimeout(() => {
-          // restart with same settings and same range
-          btnStart.click();
-        }, mins * 60 * 1000);
-      }
-    }
-  }
-
-  // --- Events
-  btnStart.addEventListener('click', () => {
-    if (running) return;
-    clearTimeout(rerunTimer);
-    runScan();
-  });
-
-  btnStop.addEventListener('click', () => {
-    if (!running) return;
-    running = false;
-    if (abortAll) abortAll.abort();
-    btnStop.disabled = true;
-    btnStart.disabled = false;
-    log('Stop requested. Aborting in-flight requests…', 'warn');
-  });
-
-  btnClear.addEventListener('click', () => {
-    logsEl.innerHTML = '';
-    hitList.innerHTML = '';
-    found.clear();
-    hitCount = 0;
-    hitsEl.textContent = '0';
-    log('Cleared hits and logs.');
-  });
-
-  btnExport.addEventListener('click', () => {
-    const rows = [['id','url','title','match']];
-    for (const { id, url, title, line } of found.values()) {
-      rows.push([id, url, (title||'').replaceAll('"','""'), (line||'').replaceAll('"','""')]);
-    }
-    const csv = rows.map(r => r.map(x => `"${String(x)}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `mushroom_hits_${Date.now()}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
-
-  [startIdEl,endIdEl,concEl,delayEl,timeoutEl,regexEl,mustAlsoEl,autoRerunEl,rerunMinEl,soundOnEl]
-    .forEach(el => el.addEventListener(el.type === 'checkbox' ? 'change' : 'input', saveSettings));
-
-  // Initial gentle log
-  log('Ready. Set your range and press Start.');
-})();
+ }catch{}finally{controllers.delete(ctl)}
+}
+async function startScan(){
+ run=true;controllers.clear();
+ document.getElementById("startBtn").disabled=true;
+ document.getElementById("stopBtn").disabled=false;
+ startTime=Date.now();checked=0;hits=0;hitsEl.textContent=0;
+ const s=+startEl.value,e=+endEl.value,c=+concEl.value,d=+delayEl.value;
+ const total=e-s+1;log(`Starting scan ${s}→${e} concurrency=${c}`);
+ const ids=Array.from({length:total},(_,i)=>s+i);
+ const worker=async()=>{while(run&&ids.length){const id=ids.shift();await check(id);checked++;chk.textContent=checked;
+ const pct=Math.min(100,Math.round(checked/total*100));progEl.textContent=pct+"%";
+ elapsedEl.textContent=fmt((Date.now()-startTime)/1000);
+ if(d)await new Promise(r=>setTimeout(r,d));}}
+ await Promise.all(Array.from({length:c},worker));
+ log("Scan complete.");document.getElementById("startBtn").disabled=false;document.getElementById("stopBtn").disabled=true;run=false;
+}
+startBtn.onclick=startScan;
+stopBtn.onclick=()=>{run=false;controllers.forEach(c=>c.abort());controllers.clear();log("Stopped.");document.getElementById("startBtn").disabled=false;stopBtn.disabled=true;}
+clearBtn.onclick=()=>{logEl.innerHTML="";foundEl.innerHTML="";hits=checked=0;hitsEl.textContent=0;chk.textContent=0;progEl.textContent="0%";log("Cleared.");}
+exportBtn.onclick=()=>{if(!hits)return;let csv="id,url\n";[...foundEl.querySelectorAll("a")].forEach(a=>{const id=a.href.split("/").pop();csv+=`${id},${a.href}\n`});
+const blob=new Blob([csv],{type:"text/csv"});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="mushroom_hits.csv";a.click();URL.revokeObjectURL(a.href);}
 </script>
 </body>
 </html>
